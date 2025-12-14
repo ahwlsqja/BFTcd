@@ -1,4 +1,4 @@
-# BFTcd: 탈중앙 금융 인프라를 위한 비잔틴 장애 허용 분산 저장소(BFT 기반 etcd 범용 합의 엔진)
+# BFTcd: 탈중앙 금융 인프라를 위한 비잔틴 장애 허용 분산 저장소(etcd alternative with HotStuff2 BFT consensus for trustless environments)
 
 ## Whitepaper v0.1
 
