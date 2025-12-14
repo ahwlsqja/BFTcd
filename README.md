@@ -1,4 +1,4 @@
-# BFTcd: 탈중앙 금융 인프라를 위한 비잔틴 장애 허용 분산 저장소
+# BFTcd: 탈중앙 금융 인프라를 위한 비잔틴 장애 허용 분산 저장소(BFT 기반 etcd 범용 합의 엔진)
 
 ## Whitepaper v0.1
 
@@ -233,35 +233,16 @@ HotStuff2의 합의는 다음과 같이 진행된다:
 
 **리더 장애 시 (View Change)**
 
-```
-타임아웃 발생
-━━━━━━━━━━━━
-   모든 노드 ─────[타임아웃 투표]─────► 수집
-                                        │
-                                        │ 2f+1 투표 모이면
-                                        ▼
-                              다음 View로 전환
-                              새 리더 선출
-```
+<img width="971" height="406" alt="image" src="https://github.com/user-attachments/assets/167b95e0-d741-4e20-86b8-331de503d19b" />
+
 
 ## 4.3 Quorum Certificate (QC)
 
 QC는 BFTcd의 핵심 암호학적 구조이다:
 
-```
-┌─────────────────────────────────────────────────────┐
-│                 Quorum Certificate                   │
-├─────────────────────────────────────────────────────┤
-│                                                      │
-│   블록 해시: 0x7f3a...                              │
-│   뷰 번호: 42                                        │
-│                                                      │
-│   서명자: [Bank A, Bank B, Bank D]  (3/4 = 2f+1)    │
-│                                                      │
-│   집계 서명: 0x8b2c...                              │
-│   (BLS threshold signature)                         │
-│                                                      │
-└─────────────────────────────────────────────────────┘
+
+<img width="604" height="606" alt="image" src="https://github.com/user-attachments/assets/e549e85f-256f-4efb-bbd5-9d71b1cad5b0" />
+
 
 검증 방법:
 1. 서명자 수가 2f+1 이상인지 확인
@@ -269,183 +250,213 @@ QC는 BFTcd의 핵심 암호학적 구조이다:
 3. 서명자들이 현재 검증자 집합에 포함되는지 확인
 
 → 이 세 조건을 만족하면 해당 블록은 "합의됨"
-```
+
 
 ## 4.4 노드 구성
 
 각 참여 은행은 하나 이상의 BFTcd 노드를 운영한다:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        BFTcd Node (Bank A)                       │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    Identity & Crypto                      │   │
-│  │                                                           │   │
-│  │   Node ID: bank-a-node-1                                 │   │
-│  │   BLS Public Key: 0x1234...                              │   │
-│  │   TLS Certificate: /certs/node.crt                       │   │
-│  │                                                           │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    Network Endpoints                      │   │
-│  │                                                           │   │
-│  │   Client API: https://bftcd.bank-a.com:2379              │   │
-│  │   Peer API:   https://bftcd.bank-a.com:2380              │   │
-│  │                                                           │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                    Local Storage                          │   │
-│  │                                                           │   │
-│  │   WAL: /data/wal/                                        │   │
-│  │   State DB: /data/state/                                 │   │
-│  │   Snapshots: /data/snapshots/                            │   │
-│  │                                                           │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+<img width="684" height="736" alt="image" src="https://github.com/user-attachments/assets/e21057ca-87f2-424f-92fd-f9343c43513c" />
+
 
 ## 4.5 네트워크 토폴로지
 
 컨소시엄 노드들은 Full Mesh 토폴로지로 연결된다:
 
-```
-                    ┌───────────────────┐
-                    │    Bank A Node    │
-                    │   (Seoul, KR)     │
-                    └─────────┬─────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              │               │               │
-              ▼               │               ▼
-   ┌──────────────────┐      │      ┌──────────────────┐
-   │   Bank B Node    │◄─────┴─────►│   Bank C Node    │
-   │  (Singapore)     │             │   (Tokyo, JP)    │
-   └────────┬─────────┘             └────────┬─────────┘
-            │                                 │
-            │      ┌───────────────────┐     │
-            │      │    Bank D Node    │     │
-            └─────►│   (Hong Kong)     │◄────┘
-                   └───────────────────┘
+<img width="519" height="477" alt="image" src="https://github.com/user-attachments/assets/c9a4bebf-6aa8-450d-b26c-87a38a1cc19d" />
+
 
 연결 특성:
+
 • 모든 노드 쌍 간 직접 연결 (Full Mesh)
+
 • mTLS로 암호화 및 상호 인증
+
 • 지리적 분산으로 단일 장애점 제거
-```
+
 
 ## 4.6 데이터 흐름
 
 **쓰기 요청 처리**
 
-```
-K8s API Server                    BFTcd Cluster
-      │                                │
-      │ 1. Put(/registry/pods/...)    │
-      ├──────────────────────────────►│
-      │                                │
-      │                    ┌───────────┴───────────┐
-      │                    │   2. 합의 프로세스     │
-      │                    │                       │
-      │                    │   Leader: 블록 제안   │
-      │                    │   Replicas: 투표      │
-      │                    │   QC 생성 → 커밋      │
-      │                    │                       │
-      │                    └───────────┬───────────┘
-      │                                │
-      │ 3. 응답 (revision: 12345)     │
-      │◄──────────────────────────────┤
-      │                                │
+```mermaid
+sequenceDiagram
+    participant K as K8s API Server
+    participant A as BFTcd API
+    participant L as Leader Node
+    participant R as Replica Nodes
+    participant S as Storage
+
+    K->>A: Put(/registry/pods/nginx)
+    A->>L: Propose Transaction
+    
+    rect rgb(240, 248, 255)
+        Note over L,R: HotStuff2 Consensus
+        L->>R: PREPARE (Block)
+        R->>L: VOTE (Signature)
+        Note over L: Aggregate 2f+1 votes → QC
+        L->>R: PRE-COMMIT (Block + QC)
+        R->>L: VOTE (Signature)
+        Note over L: Form commit QC
+    end
+    
+    L->>S: Commit to WAL
+    S-->>L: ACK
+    L->>R: COMMIT notification
+    R->>S: Apply to local state
+    
+    A-->>K: Response (revision: 12847)
 ```
 
 **읽기 요청 처리**
 
+```mermaid
+sequenceDiagram
+    participant K as K8s API Server
+    participant A as BFTcd API
+    participant C as Consensus Layer
+    participant S as Storage
+
+    K->>A: Range(/registry/pods/*)
+    A->>C: Request ReadIndex
+    
+    rect rgb(255, 248, 240)
+        Note over C: Confirm commit index<br/>with quorum
+        C->>C: Wait for applied index ≥ read index
+    end
+    
+    C-->>A: ReadIndex confirmed
+    A->>S: Get from state DB
+    S-->>A: Key-Value pairs
+    A-->>K: Response (pods list)
 ```
-K8s API Server                    BFTcd Cluster
-      │                                │
-      │ 1. Range(/registry/pods/...)  │
-      ├──────────────────────────────►│
-      │                                │
-      │                    ┌───────────┴───────────┐
-      │                    │  2. Linearizable Read │
-      │                    │                       │
-      │                    │  현재 커밋 인덱스 확인│
-      │                    │  → 최신 상태 반환     │
-      │                    │                       │
-      │                    └───────────┬───────────┘
-      │                                │
-      │ 3. 응답 (pods 목록)           │
-      │◄──────────────────────────────┤
-      │                                │
+
+**이벤트 읽었을 때 처리**
+
+```mermaid
+sequenceDiagram
+    participant K as K8s Controller
+    participant W as Watch Manager
+    participant C as Consensus
+    participant H as Watch Hub
+
+    K->>W: Watch(/registry/pods/*, rev=1000)
+    W->>H: Register watcher
+    
+    loop On each committed block
+        C->>H: Notify(Event)
+        H->>H: Match watchers
+        H->>W: Push matching events
+        W->>K: WatchResponse(events)
+    end
 ```
 
 ---
 
+## 4.7 부트스트랩 순서
+```mermaid
+sequenceDiagram
+    autonumber
+    participant BA as Bank A
+    participant BB as Bank B
+    participant BC as Bank C
+    participant BD as Bank D
+    
+    Note over BA,BD: Phase 1: BFTcd Cluster Formation
+    
+    rect rgb(255, 245, 238)
+        BA->>BA: Start BFTcd Node
+        BB->>BB: Start BFTcd Node
+        BC->>BC: Start BFTcd Node
+        BD->>BD: Start BFTcd Node
+        
+        BA->>BB: Connect peers
+        BA->>BC: Connect peers
+        BA->>BD: Connect peers
+        BB->>BC: Connect peers
+        BB->>BD: Connect peers
+        BC->>BD: Connect peers
+        
+        Note over BA,BD: HotStuff2 consensus begins<br/>Leader elected, ready for writes
+    end
+    
+    Note over BA,BD: Phase 2: Control Plane Startup
+    
+    rect rgb(240, 248, 255)
+        BA->>BA: Start API Server<br/>--etcd-servers=bftcd-a,b,c,d
+        BB->>BB: Start API Server
+        BC->>BC: Start API Server
+        BD->>BD: Start API Server
+        
+        BA->>BA: Start Controller Manager
+        BB->>BB: Start Controller Manager
+        BC->>BC: Start Controller Manager
+        BD->>BD: Start Controller Manager
+        
+        Note over BA,BD: Leader election among<br/>Controller Managers
+        
+        BA->>BA: Start Scheduler
+        BB->>BB: Start Scheduler
+        BC->>BC: Start Scheduler
+        BD->>BD: Start Scheduler
+        
+        Note over BA,BD: Leader election among<br/>Schedulers
+    end
+    
+    Note over BA,BD: Phase 3: Worker Nodes Join
+    
+    rect rgb(245, 255, 245)
+        BA->>BA: Worker nodes join cluster
+        BB->>BB: Worker nodes join cluster
+        BC->>BC: Worker nodes join cluster
+        BD->>BD: Worker nodes join cluster
+        
+        Note over BA,BD: Cluster ready for workloads
+    end
+```
+## 4.8 노드들 관계
+```mermaid
+flowchart TB
+    subgraph MASTER["Master Node (Control Plane)"]
+        direction TB
+        API[API Server<br/>━━━━━━━━━━<br/>• REST/gRPC endpoint<br/>• Authentication<br/>• Request validation]
+        
+        CTRL[Controller Manager<br/>━━━━━━━━━━<br/>• Desired state → Actual state<br/>• Deployment controller<br/>• ReplicaSet controller]
+        
+        SCHED[Scheduler<br/>━━━━━━━━━━<br/>• Pod placement decisions<br/>• Resource matching<br/>• Affinity rules]
+        
+        BFTCD[BFTcd<br/>━━━━━━━━━━<br/>• Cluster state storage<br/>• BFT consensus<br/>• Watch notifications]
+    end
+    
+    subgraph WORKER["Worker Node (Data Plane)"]
+        direction TB
+        KUBELET[Kubelet<br/>━━━━━━━━━━<br/>• Pod lifecycle<br/>• Container management<br/>• Health reporting]
+        
+        RUNTIME[Container Runtime<br/>━━━━━━━━━━<br/>• containerd/CRI-O<br/>• Image pulling<br/>• Container execution]
+        
+        PROXY[Kube Proxy<br/>━━━━━━━━━━<br/>• Service networking<br/>• Load balancing<br/>• iptables/IPVS]
+        
+        PODS[Pods<br/>━━━━━━━━━━<br/>• Application containers<br/>• Actual workloads]
+    end
+    
+    API <--> BFTCD
+    CTRL --> API
+    SCHED --> API
+    
+    API <-->|"Watch & Report"| KUBELET
+    KUBELET --> RUNTIME
+    RUNTIME --> PODS
+    KUBELET --> PROXY
+    
+    style MASTER fill:#1a1a2e,color:#fff
+    style WORKER fill:#16213e,color:#fff
+    style BFTCD fill:#d4a574,color:#000
+```
+
 # 5. 은행 컨소시엄 통합 아키텍처
 
 ## 5.1 전체 시스템 구성
-
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                     Bank Consortium Infrastructure                          │
-│                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                        Application Layer                               │ │
-│  │                                                                        │ │
-│  │   ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌────────────┐  │ │
-│  │   │ 예금 토큰   │   │   결제     │   │   청산     │   │   감사     │  │ │
-│  │   │   발행     │   │  게이트웨이 │   │   시스템   │   │  포털     │  │ │
-│  │   └─────┬──────┘   └─────┬──────┘   └─────┬──────┘   └─────┬──────┘  │ │
-│  └─────────┼────────────────┼────────────────┼────────────────┼──────────┘ │
-│            │                │                │                │            │
-│  ┌─────────▼────────────────▼────────────────▼────────────────▼──────────┐ │
-│  │                     Blockchain Layer                                   │ │
-│  │                                                                        │ │
-│  │   ┌──────────────────────────────────────────────────────────────┐   │ │
-│  │   │              Hyperledger Besu / Quorum                        │   │ │
-│  │   │                     (QBFT 합의)                               │   │ │
-│  │   │                                                               │   │ │
-│  │   │   Bank A      Bank B      Bank C      Bank D                 │   │ │
-│  │   │  Validator   Validator   Validator   Validator               │   │ │
-│  │   └──────────────────────────────────────────────────────────────┘   │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-│                                      │                                      │
-│                          K8s로 배포/관리                                    │
-│                                      │                                      │
-│  ┌───────────────────────────────────▼───────────────────────────────────┐ │
-│  │                     Kubernetes Layer                                   │ │
-│  │                                                                        │ │
-│  │   ┌────────────────────────────────────────────────────────────────┐ │ │
-│  │   │                    Control Plane                                │ │ │
-│  │   │                                                                 │ │ │
-│  │   │  Bank A Zone    Bank B Zone    Bank C Zone    Bank D Zone     │ │ │
-│  │   │  ┌─────────┐   ┌─────────┐    ┌─────────┐   ┌─────────┐      │ │ │
-│  │   │  │API Srv  │   │API Srv  │    │API Srv  │   │API Srv  │      │ │ │
-│  │   │  │Ctrl Mgr │   │Ctrl Mgr │    │Ctrl Mgr │   │Ctrl Mgr │      │ │ │
-│  │   │  │Scheduler│   │Scheduler│    │Scheduler│   │Scheduler│      │ │ │
-│  │   │  └────┬────┘   └────┬────┘    └────┬────┘   └────┬────┘      │ │ │
-│  │   │       └─────────────┴──────┬───────┴─────────────┘           │ │ │
-│  │   └────────────────────────────┼────────────────────────────────┘ │ │
-│  │                                │                                   │ │
-│  │                                ▼                                   │ │
-│  │   ┌────────────────────────────────────────────────────────────┐ │ │
-│  │   │                       BFTcd                                 │ │ │
-│  │   │                                                             │ │ │
-│  │   │     ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐    │ │ │
-│  │   │     │ Node A  │◄─┼─► Node B │◄─┼─► Node C │◄─┼─► Node D │    │ │ │
-│  │   │     │ Bank A  │  │  Bank B  │  │  Bank C  │  │  Bank D  │    │ │ │
-│  │   │     └─────────┘  └─────────┘  └─────────┘  └─────────┘    │ │ │
-│  │   │                                                             │ │ │
-│  │   │              HotStuff2 BFT Consensus                       │ │ │
-│  │   │                                                             │ │ │
-│  │   └────────────────────────────────────────────────────────────┘ │ │
-│  └───────────────────────────────────────────────────────────────────┘ │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+<img width="543" height="842" alt="image" src="https://github.com/user-attachments/assets/fd92214a-8320-4763-ba74-030f2ce9855c" />
 
 ## 5.2 계층별 책임과 보호
 
@@ -745,104 +756,9 @@ Tendermint는 훌륭한 BFT 엔진이지만:
 - 인프라 계층의 무결성이 선행 조건
 
 ---
+# 9. 결론
 
-# 9. 로드맵
-
-## 9.1 개발 단계
-
-```
-2024                          2025                          2026
-  │                             │                             │
-  ▼                             ▼                             ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                                                                          │
-│  Phase 1: Foundation         Phase 2: Production        Phase 3: Scale  │
-│  ━━━━━━━━━━━━━━━━━━━        ━━━━━━━━━━━━━━━━━━━       ━━━━━━━━━━━━━━━ │
-│                                                                          │
-│  Q1-Q2 2024                  Q3-Q4 2024                  2025~           │
-│  ─────────                   ─────────                  ─────           │
-│  • HotStuff2 엔진            • Watch/Lease API          • 멀티 클러스터 │
-│  • 기본 KV API               • 동적 멤버십              • 샤딩           │
-│  • 고정 멤버십               • 보안 감사               • 크로스체인     │
-│  • PoC 데모                  • 성능 최적화              • 엔터프라이즈   │
-│                              • 파일럿 배포                기능           │
-│                                                                          │
-│  마일스톤:                   마일스톤:                  마일스톤:       │
-│  ✓ 로컬 테스트 통과          ✓ K8s 1.28+ 인증          ✓ 상용 배포     │
-│  ✓ 백서 v1.0                 ✓ 보안 감사 완료          ✓ 다중 컨소시엄  │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-## 9.2 Phase 1 상세 (Foundation)
-
-**목표**: 핵심 기술 검증 및 PoC
-
-| 항목 | 설명 | 기간 |
-|------|------|------|
-| HotStuff2 합의 엔진 | 코어 프로토콜 구현 | 8주 |
-| 기본 KV API | Put, Get, Delete, Range | 4주 |
-| 저장소 계층 | WAL, 스냅샷 | 4주 |
-| 테스트넷 | 4노드 로컬 클러스터 | 2주 |
-| 문서화 | 기술 스펙, API 문서 | 2주 |
-
-**산출물**:
-- 동작하는 BFTcd 바이너리
-- 성능 벤치마크 결과
-- 기술 백서 v1.0
-
-## 9.3 Phase 2 상세 (Production)
-
-**목표**: K8s 완전 호환 및 프로덕션 준비
-
-| 항목 | 설명 | 기간 |
-|------|------|------|
-| Watch API | 실시간 이벤트 스트리밍 | 4주 |
-| Lease API | TTL 기반 키 관리 | 3주 |
-| 동적 멤버십 | 노드 추가/제거 | 4주 |
-| 보안 강화 | mTLS, RBAC | 4주 |
-| K8s 통합 테스트 | E2E 테스트 | 4주 |
-| 보안 감사 | 외부 감사 | 4주 |
-
-**산출물**:
-- K8s 인증 호환성
-- 보안 감사 보고서
-- 운영 가이드
-
----
-
-# 10. 팀 및 파트너십 (TBD)
-
-## 10.1 필요 역량
-
-| 역할 | 책임 | 인원 |
-|------|------|------|
-| Tech Lead | 아키텍처, 기술 결정 | 1 |
-| Consensus Engineer | HotStuff2 구현 | 2 |
-| Systems Engineer | 스토리지, 네트워크 | 2 |
-| K8s Specialist | 통합, 테스트 | 1 |
-| Security Engineer | 암호학, 보안 감사 | 1 |
-| DevOps | CI/CD, 인프라 | 1 |
-
-## 10.2 잠재적 파트너
-
-**기술 파트너**
-- 클라우드 제공자 (AWS, GCP, Azure)
-- K8s 전문 기업
-
-**금융 파트너**
-- 시범 도입 은행
-- 금융 규제 샌드박스
-
-**학술 파트너**
-- 분산 시스템 연구 그룹
-- 암호학 연구소
-
----
-
-# 11. 결론
-
-## 11.1 핵심 가치 제안
+## 9.1 핵심 가치 제안
 
 BFTcd는 단순한 기술 교체가 아니라, **디지털 금융 인프라의 신뢰 기반을 완성**하는 솔루션이다.
 
@@ -861,59 +777,23 @@ BFTcd는 단순한 기술 교체가 아니라, **디지털 금융 인프라의 �
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## 11.2 시장 기회
+## 9.2 시장 기회
 
 - **스테이블코인 시장**: 1,500억+ 달러, 연 성장률 20%+
 - **예금 토큰 시장**: 주요 은행들의 파일럿 본격화
 - **규제 환경**: 컨소시엄 기반 솔루션 선호
 
-## 11.3 차별화 요소
+## 9.3 차별화 요소
 
 1. **유일한 BFT + etcd 호환 솔루션**
 2. **K8s 무수정 연동**
 3. **HotStuff2의 입증된 안전성**
 4. **은행 컨소시엄 특화 거버넌스**
 
-## 11.4 Call to Action
-
-- 기술 검토 및 피드백: [contact]
-- 파일럿 참여 문의: [contact]
-- 투자 및 파트너십: [contact]
-
 ---
 
-# 부록
-
-## A. 용어 정의
-
-| 용어 | 정의 |
-|------|------|
-| BFT | Byzantine Fault Tolerant. 악의적 노드가 있어도 정상 동작 |
-| CFT | Crash Fault Tolerant. 노드 crash만 허용 |
-| QC | Quorum Certificate. 2f+1 서명의 집계 증명 |
-| View | 합의 라운드의 논리적 시간 단위 |
-| etcd | K8s의 분산 키-값 저장소 |
-| HotStuff2 | Meta가 개발한 선형 복잡도 BFT 알고리즘 |
-
-## B. 참고 문헌
-
-1. Yin, M., et al. "HotStuff: BFT Consensus in the Lens of Blockchain" (2019)
-2. Malkhi, D., et al. "HotStuff-2: Optimal Two-Phase Responsive BFT" (2023)
-3. etcd Documentation (https://etcd.io/docs/)
-4. Kubernetes Architecture (https://kubernetes.io/docs/)
-5. Hyperledger Besu Documentation
-
-## C. 연락처
-
-- 프로젝트 웹사이트: [TBD]
-- GitHub: [TBD]
-- 이메일: [TBD]
-
----
-
-**문서 버전**: 0.1 (Draft)  
-**최종 수정**: 2024년  
-**상태**: 검토 중
+**문서 버전**: 0.1 
+**최종 수정**: 2025년 12월 15일  
 
 ---
 
