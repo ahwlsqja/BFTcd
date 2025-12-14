@@ -492,38 +492,50 @@ BFTcd는 기술적 합의뿐 아니라 조직적 거버넌스도 지원한다(�
 
 **새 은행 추가**
 
-```
-1. 제안 단계
-   ━━━━━━━━━
-   Bank E가 가입 신청
-        │
-        ▼
-   기존 멤버가 "Add Bank E" 제안 트랜잭션 생성
-        │
-        ▼
-   
-2. 투표 단계
-   ━━━━━━━━━
-   ┌────────┬────────┬────────┬────────┐
-   │ Bank A │ Bank B │ Bank C │ Bank D │
-   │   ✓    │   ✓    │   ✓    │   ✓    │  ← 전원 동의 필요
-   └────────┴────────┴────────┴────────┘
-        │
-        ▼
-   
-3. 실행 단계
-   ━━━━━━━━━
-   투표 완료 → 설정 변경 트랜잭션 자동 실행
-        │
-        ▼
-   Bank E 노드 동기화 시작
-        │
-        ▼
-   Bank E가 검증자로 활성화
-   (n=4 → n=5, f=1 → f=1 유지)
-```
+```mermaid
+sequenceDiagram
+    autonumber
+    participant E as Bank E<br/>(New)
+    participant A as Bank A
+    participant B as Bank B
+    participant C as Bank C
+    participant D as Bank D
+    participant BFTCD as BFTcd Cluster
 
----
+    Note over E,BFTCD: Phase 1: Proposal
+
+    E->>A: Request to join consortium
+    A->>BFTCD: Propose "Add Bank E"<br/>ConfigChange Transaction
+
+    Note over E,BFTCD: Phase 2: Voting
+
+    rect rgb(240, 248, 255)
+        BFTCD->>A: Vote request
+        BFTCD->>B: Vote request
+        BFTCD->>C: Vote request
+        BFTCD->>D: Vote request
+        
+        A->>BFTCD: ✓ Approve
+        B->>BFTCD: ✓ Approve
+        C->>BFTCD: ✓ Approve
+        D->>BFTCD: ✓ Approve
+        
+        Note over BFTCD: All members approved<br/>(unanimous required)
+    end
+
+    Note over E,BFTCD: Phase 3: Execution
+
+    rect rgb(245, 255, 245)
+        BFTCD->>BFTCD: Execute ConfigChange
+        BFTCD->>E: Send snapshot<br/>(current state)
+        E->>E: Sync state
+        E->>BFTCD: Join as validator
+        
+        Note over BFTCD: Validator set updated<br/>n=4 → n=5<br/>f=1 → f=1 (unchanged)
+    end
+
+    Note over E,BFTCD: Bank E now active in consensus
+```
 
 # 7. 성능 및 확장성
 
@@ -548,38 +560,6 @@ BFTcd는 기술적 합의뿐 아니라 조직적 거버넌스도 지원한다(�
 - 읽기 전용 복제본 추가
 - 지역별 캐시 노드
 - 샤딩 (향후 로드맵)
-
-## 7.3 K8s 워크로드 기준 용량
-
-```
-일반적인 K8s 클러스터 etcd 사용량:
-
-┌─────────────────────────────────────────────────────────────┐
-│                                                              │
-│   소규모 클러스터 (노드 ~50개)                              │
-│   ─────────────────────────────                             │
-│   • etcd 키 수: ~10,000                                     │
-│   • 데이터 크기: ~100MB                                     │
-│   • 초당 쓰기: ~100                                         │
-│   → BFTcd 충분히 처리 가능                                  │
-│                                                              │
-│   중규모 클러스터 (노드 ~200개)                             │
-│   ─────────────────────────────                             │
-│   • etcd 키 수: ~50,000                                     │
-│   • 데이터 크기: ~500MB                                     │
-│   • 초당 쓰기: ~500                                         │
-│   → BFTcd 충분히 처리 가능                                  │
-│                                                              │
-│   대규모 클러스터 (노드 ~1000개)                            │
-│   ─────────────────────────────                             │
-│   • etcd 키 수: ~200,000                                    │
-│   • 데이터 크기: ~2GB                                       │
-│   • 초당 쓰기: ~2,000                                       │
-│   → BFTcd 처리 가능 (최적화 필요)                           │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
 ---
 
 # 8. 기존 솔루션 비교
